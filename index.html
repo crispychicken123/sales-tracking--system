@@ -8,6 +8,7 @@
     <!-- External Libraries -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
     <!-- Main Styles -->
     <style>
@@ -509,6 +510,11 @@
             color: #721c24;
         }
 
+        .status-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
         /* Progress Bar */
         .progress-bar {
             height: 8px;
@@ -603,6 +609,66 @@
             font-weight: 700;
             color: var(--primary-color);
         }
+
+        /* Upload Feedback */
+        .upload-feedback {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: var(--border-radius);
+            display: none;
+        }
+
+        .upload-feedback.success {
+            background: rgba(39, 174, 96, 0.1);
+            border: 1px solid var(--success-color);
+            color: var(--success-color);
+            display: block;
+        }
+
+        .upload-feedback.error {
+            background: rgba(231, 76, 60, 0.1);
+            border: 1px solid var(--danger-color);
+            color: var(--danger-color);
+            display: block;
+        }
+
+        .file-info {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: var(--gray-color);
+        }
+
+        /* Date Filter */
+        .date-filter {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+        }
+
+        .date-filter label {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .date-input {
+            padding: 8px 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        /* Chart Container Improvements */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -645,6 +711,20 @@
                     <p class="subtitle">Track and analyze performance of 9 branches with detailed reports and customizable targets</p>
                 </div>
 
+                <!-- Date Filter -->
+                <div class="date-filter" id="dateFilter">
+                    <label><i class="fas fa-calendar-alt"></i> Date Range:</label>
+                    <input type="date" id="startDate" class="date-input">
+                    <span>to</span>
+                    <input type="date" id="endDate" class="date-input">
+                    <button class="btn btn-primary" id="applyFilter">
+                        <i class="fas fa-filter"></i> Apply Filter
+                    </button>
+                    <button class="btn btn-secondary" id="clearFilter">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                </div>
+
                 <!-- Quick Stats -->
                 <div class="quick-stats" id="quickStats">
                     <!-- Will be filled by JavaScript -->
@@ -654,6 +734,9 @@
                 <div class="card">
                     <div class="card-header">
                         <h3><i class="fas fa-store"></i> Branches Overview</h3>
+                        <button class="btn btn-primary" onclick="salesSystem.exportToExcel('branches')">
+                            <i class="fas fa-download"></i> Export
+                        </button>
                     </div>
                     <div class="card-body">
                         <div class="table-container">
@@ -737,7 +820,7 @@
 
                     <div class="analysis-card">
                         <h3><i class="fas fa-balance-scale"></i> Delivery Cash vs Card Comparison</h3>
-                        <div class="comparison-chart">
+                        <div class="chart-container">
                             <canvas id="deliveryComparisonChart"></canvas>
                         </div>
                     </div>
@@ -796,7 +879,7 @@
 
                     <div class="analysis-card">
                         <h3><i class="fas fa-layer-group"></i> Online Platforms Distribution</h3>
-                        <div class="comparison-chart">
+                        <div class="chart-container">
                             <canvas id="onlinePlatformsChart"></canvas>
                         </div>
                     </div>
@@ -837,8 +920,10 @@
                     <div class="card-body">
                         <div class="upload-area" id="dropZone">
                             <i class="fas fa-cloud-upload-alt fa-3x" style="color: var(--primary-color); margin-bottom: 20px;"></i>
-                            <h4>Drag and drop Excel file here</h4>
+                            <h4>Drag and drop Excel/CSV file here</h4>
                             <p style="color: var(--gray-color); margin: 10px 0;">Supports .xlsx, .xls, .csv formats</p>
+                            <div class="file-info" id="fileInfo"></div>
+                            <div class="upload-feedback" id="uploadFeedback"></div>
                             
                             <div style="margin-top: 20px;">
                                 <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;">
@@ -898,7 +983,7 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p>Integrated Sales Tracking System v1.0 | Last Update: <span id="lastUpdate">Today</span></p>
+            <p>Integrated Sales Tracking System v2.0 | Last Update: <span id="lastUpdate">Today</span></p>
             <div>
                 <button class="btn btn-secondary" id="exportData">
                     <i class="fas fa-download"></i> Export Data
@@ -926,15 +1011,24 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Time Period</label>
-                    <select id="reportPeriod" class="form-control">
+                    <label>Format</label>
+                    <select id="exportFormat" class="form-control">
+                        <option value="csv">CSV</option>
+                        <option value="xlsx">Excel (XLSX)</option>
+                        <option value="json">JSON</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Date Range</label>
+                    <select id="exportPeriod" class="form-control">
+                        <option value="all">All Data</option>
                         <option value="today">Today</option>
                         <option value="week">This Week</option>
                         <option value="month">This Month</option>
-                        <option value="custom">Custom</option>
+                        <option value="custom">Custom Range</option>
                     </select>
                 </div>
-                <button class="btn btn-primary" id="generateReport">
+                <button class="btn btn-primary" id="generateExport">
                     <i class="fas fa-download"></i> Download Report
                 </button>
             </div>
@@ -947,6 +1041,8 @@
         let salesData = [];
         let targets = [];
         let charts = {};
+        let dateRange = { start: null, end: null };
+        let chartInstances = [];
 
         // Branches
         const branches = [
@@ -954,11 +1050,27 @@
             'Al Barsha', 'Al Satwa', 'Al Rigga', 'Al Majaz'
         ];
 
-        // Delivery Channels
-        const deliveryChannels = ['Delivery CARD', 'Delivery Cash'];
+        // Channel normalization mapping
+        const channelNormalization = {
+            'Master card': 'Mastercard',
+            'Visa Card': 'Visa',
+            'Aggrogater': 'Aggregator',
+            'Delivery CARD': 'Delivery Card',
+            'Delivery Cash': 'Delivery Cash',
+            'ONLINE CASH': 'Online Cash',
+            'ONLINE CARD': 'Online Card',
+            'Keeta CARD': 'Keeta',
+            'NOON CARD': 'Noon',
+            'Careem CARD': 'Careem',
+            'SMILES CARD': 'Smiles',
+            'DELIVEROO CARD': 'Deliveroo'
+        };
+
+        // Delivery Channels (normalized)
+        const deliveryChannels = ['Delivery Card', 'Delivery Cash'];
         
-        // Online Channels
-        const onlineChannels = ['ONLINE CASH', 'ONLINE CARD', 'Keeta CARD', 'NOON CARD', 'Careem CARD', 'SMILES CARD', 'DELIVEROO CARD'];
+        // Online Channels (normalized)
+        const onlineChannels = ['Online Cash', 'Online Card', 'Keeta', 'Noon', 'Careem', 'Smiles', 'Deliveroo'];
 
         // Initialize System
         class SalesTrackingSystem {
@@ -966,6 +1078,7 @@
                 this.initializeApp();
                 this.loadSampleData();
                 this.setupEventListeners();
+                this.setupDateFilter();
             }
 
             initializeApp() {
@@ -1020,6 +1133,65 @@
                 });
             }
 
+            setupDateFilter() {
+                const today = new Date();
+                const lastMonth = new Date();
+                lastMonth.setMonth(lastMonth.getMonth() - 1);
+                
+                document.getElementById('startDate').valueAsDate = lastMonth;
+                document.getElementById('endDate').valueAsDate = today;
+                
+                dateRange.start = lastMonth;
+                dateRange.end = today;
+                
+                document.getElementById('applyFilter').addEventListener('click', () => {
+                    const start = document.getElementById('startDate').value;
+                    const end = document.getElementById('endDate').value;
+                    
+                    if (start && end) {
+                        dateRange.start = new Date(start);
+                        dateRange.end = new Date(end);
+                        this.updateAllViews();
+                        this.showFeedback('Date filter applied successfully!', 'success');
+                    } else {
+                        this.showFeedback('Please select both start and end dates.', 'error');
+                    }
+                });
+                
+                document.getElementById('clearFilter').addEventListener('click', () => {
+                    document.getElementById('startDate').valueAsDate = lastMonth;
+                    document.getElementById('endDate').valueAsDate = today;
+                    dateRange.start = lastMonth;
+                    dateRange.end = today;
+                    this.updateAllViews();
+                    this.showFeedback('Date filter cleared.', 'success');
+                });
+            }
+
+            getFilteredData() {
+                if (!dateRange.start || !dateRange.end) return salesData;
+                
+                return salesData.filter(item => {
+                    const itemDate = this.parseDate(item.Date);
+                    return itemDate >= dateRange.start && itemDate <= dateRange.end;
+                });
+            }
+
+            parseDate(dateString) {
+                if (!dateString) return new Date();
+                
+                // Try different date formats
+                const parts = dateString.split(/[/-]/);
+                if (parts.length === 3) {
+                    // Assuming format: mm/dd/yyyy or dd-mm-yyyy
+                    const month = parseInt(parts[0]) - 1;
+                    const day = parseInt(parts[1]);
+                    const year = parseInt(parts[2]);
+                    return new Date(year, month, day);
+                }
+                return new Date(dateString);
+            }
+
             updatePageContent(pageId) {
                 switch(pageId) {
                     case 'home':
@@ -1044,13 +1216,15 @@
             setupEventListeners() {
                 // File upload
                 document.getElementById('fileInput').addEventListener('change', (e) => {
-                    this.handleFileUpload(e.target.files[0]);
+                    if (e.target.files.length > 0) {
+                        this.handleFileUpload(e.target.files[0]);
+                    }
                 });
 
                 // Load sample data
                 document.getElementById('loadSampleData').addEventListener('click', () => {
                     this.loadSampleData();
-                    alert('Sample data loaded successfully!');
+                    this.showFeedback('Sample data loaded successfully!', 'success');
                 });
 
                 // Export data
@@ -1063,9 +1237,9 @@
                     this.hideExportModal();
                 });
 
-                // Generate report
-                document.getElementById('generateReport').addEventListener('click', () => {
-                    this.generateReport();
+                // Generate export
+                document.getElementById('generateExport').addEventListener('click', () => {
+                    this.exportData();
                 });
 
                 // Drag and drop file
@@ -1091,67 +1265,166 @@
             handleFileUpload(file) {
                 if (!file) return;
                 
+                const fileName = file.name;
+                const fileSize = (file.size / 1024).toFixed(2);
+                const fileType = file.name.split('.').pop().toLowerCase();
+                
+                // Show file info
+                document.getElementById('fileInfo').innerHTML = `
+                    <strong>File:</strong> ${fileName}<br>
+                    <strong>Size:</strong> ${fileSize} KB<br>
+                    <strong>Type:</strong> ${fileType.toUpperCase()}
+                `;
+                
+                // Validate file type
+                const validTypes = ['csv', 'xlsx', 'xls'];
+                if (!validTypes.includes(fileType)) {
+                    this.showFeedback('Please upload a valid CSV or Excel file.', 'error');
+                    return;
+                }
+                
                 const reader = new FileReader();
+                
                 reader.onload = (e) => {
                     try {
-                        const content = e.target.result;
-                        const rows = content.split('\n');
-                        const headers = rows[0].split(',');
+                        let content = e.target.result;
+                        let newData = [];
                         
-                        // Convert data
-                        const newData = rows.slice(1)
-                            .filter(row => row.trim())
-                            .map(row => {
-                                const values = row.split(',');
-                                return {
-                                    Date: values[0],
-                                    Branch: values[1],
-                                    Channel: values[2],
-                                    Tender_Type: values[3],
-                                    Sales: parseFloat(values[4].replace(/,/g, '')) || 0,
-                                    Transactions: parseInt(values[5]) || 0,
-                                    AVR: parseFloat(values[6]) || 0
-                                };
-                            });
+                        if (fileType === 'csv') {
+                            newData = this.parseCSV(content);
+                        } else {
+                            // Excel file
+                            newData = this.parseExcel(content, fileType);
+                        }
                         
-                        salesData = newData;
-                        this.updateAllViews();
-                        alert(`${newData.length} records uploaded successfully!`);
+                        if (newData.length > 0) {
+                            // Normalize channel names
+                            newData = this.normalizeData(newData);
+                            
+                            salesData = newData;
+                            this.updateAllViews();
+                            this.showFeedback(`${newData.length} records uploaded successfully!`, 'success');
+                        } else {
+                            this.showFeedback('No valid data found in the file.', 'error');
+                        }
                     } catch (error) {
-                        alert('Error reading file. Please check the format.');
+                        console.error('Error parsing file:', error);
+                        this.showFeedback('Error reading file. Please check the format.', 'error');
                     }
                 };
                 
-                reader.readAsText(file);
+                if (fileType === 'csv') {
+                    reader.readAsText(file);
+                } else {
+                    reader.readAsArrayBuffer(file);
+                }
+            }
+
+            parseCSV(content) {
+                const rows = content.split('\n').filter(row => row.trim());
+                if (rows.length < 2) return [];
+                
+                const headers = rows[0].split(',').map(h => h.trim());
+                
+                return rows.slice(1).map(row => {
+                    const values = row.split(',').map(v => v.trim());
+                    if (values.length !== headers.length) return null;
+                    
+                    const item = {};
+                    headers.forEach((header, index) => {
+                        item[header] = values[index];
+                    });
+                    
+                    // Convert numeric fields
+                    item.Sales = parseFloat(item.Sales?.replace(/,/g, '')) || 0;
+                    item.Transactions = parseInt(item.Transactions) || 0;
+                    item.AVR = parseFloat(item.AVR) || 0;
+                    
+                    return item;
+                }).filter(item => item !== null);
+            }
+
+            parseExcel(content, fileType) {
+                try {
+                    const workbook = XLSX.read(content, { type: fileType === 'xlsx' ? 'array' : 'binary' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const data = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                    
+                    if (data.length < 2) return [];
+                    
+                    const headers = data[0];
+                    
+                    return data.slice(1).map(row => {
+                        if (row.length !== headers.length) return null;
+                        
+                        const item = {};
+                        headers.forEach((header, index) => {
+                            item[header] = row[index] || '';
+                        });
+                        
+                        // Convert numeric fields
+                        item.Sales = parseFloat(item.Sales?.toString().replace(/,/g, '')) || 0;
+                        item.Transactions = parseInt(item.Transactions) || 0;
+                        item.AVR = parseFloat(item.AVR) || 0;
+                        
+                        return item;
+                    }).filter(item => item !== null);
+                } catch (error) {
+                    console.error('Excel parsing error:', error);
+                    return [];
+                }
+            }
+
+            normalizeData(data) {
+                return data.map(item => {
+                    // Normalize channel names
+                    if (item.Channel && channelNormalization[item.Channel]) {
+                        item.Channel = channelNormalization[item.Channel];
+                    }
+                    
+                    // Normalize other fields
+                    if (item.Tender_Type === 'Aggrogater') {
+                        item.Tender_Type = 'Aggregator';
+                    }
+                    
+                    return item;
+                });
             }
 
             loadSampleData() {
-                // Sample data from the question
+                // Sample data with normalized names
                 salesData = [
-                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Keeta CARD', Tender_Type: 'Aggrogater', Sales: 10546, Transactions: 248, AVR: 43},
+                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Keeta', Tender_Type: 'Aggregator', Sales: 10546, Transactions: 248, AVR: 43},
                     {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Cash', Tender_Type: 'In-Store', Sales: 4680, Transactions: 208, AVR: 23},
-                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Master card', Tender_Type: 'In-Store', Sales: 3368, Transactions: 119, AVR: 28},
-                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'NOON CARD', Tender_Type: 'Aggrogater', Sales: 3195, Transactions: 90, AVR: 36},
-                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Visa Card', Tender_Type: 'In-Store', Sales: 3039, Transactions: 98, AVR: 31},
-                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Delivery CARD', Tender_Type: 'Delivery', Sales: 1175, Transactions: 22, AVR: 53},
+                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Mastercard', Tender_Type: 'In-Store', Sales: 3368, Transactions: 119, AVR: 28},
+                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Noon', Tender_Type: 'Aggregator', Sales: 3195, Transactions: 90, AVR: 36},
+                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Visa', Tender_Type: 'In-Store', Sales: 3039, Transactions: 98, AVR: 31},
+                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Delivery Card', Tender_Type: 'Delivery', Sales: 1175, Transactions: 22, AVR: 53},
                     {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Delivery Cash', Tender_Type: 'Delivery', Sales: 1012, Transactions: 24, AVR: 42},
-                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'ONLINE CASH', Tender_Type: 'Online', Sales: 450, Transactions: 9, AVR: 50},
-                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Careem CARD', Tender_Type: 'Aggrogater', Sales: 430, Transactions: 10, AVR: 43},
-                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'SMILES CARD', Tender_Type: 'Aggrogater', Sales: 429, Transactions: 10, AVR: 43},
-                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'ONLINE CARD', Tender_Type: 'Online', Sales: 389, Transactions: 3, AVR: 130},
-                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'DELIVEROO CARD', Tender_Type: 'Aggrogater', Sales: 25, Transactions: 1, AVR: 25}
+                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Online Cash', Tender_Type: 'Online', Sales: 450, Transactions: 9, AVR: 50},
+                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Careem', Tender_Type: 'Aggregator', Sales: 430, Transactions: 10, AVR: 43},
+                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Smiles', Tender_Type: 'Aggregator', Sales: 429, Transactions: 10, AVR: 43},
+                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Online Card', Tender_Type: 'Online', Sales: 389, Transactions: 3, AVR: 130},
+                    {Date: '1/1/2026', Branch: 'Hamdan St', Channel: 'Deliveroo', Tender_Type: 'Aggregator', Sales: 25, Transactions: 1, AVR: 25}
                 ];
                 
                 // Add random data for other branches
+                const startDate = new Date(2026, 0, 1);
                 branches.forEach(branch => {
                     if (branch !== 'Hamdan St') {
-                        salesData.push(
-                            {Date: '1/1/2026', Branch: branch, Channel: 'Keeta CARD', Tender_Type: 'Aggrogater', Sales: Math.floor(Math.random() * 15000) + 5000, Transactions: Math.floor(Math.random() * 300) + 100, AVR: Math.floor(Math.random() * 20) + 30},
-                            {Date: '1/1/2026', Branch: branch, Channel: 'Delivery CARD', Tender_Type: 'Delivery', Sales: Math.floor(Math.random() * 1000) + 200, Transactions: Math.floor(Math.random() * 20) + 5, AVR: Math.floor(Math.random() * 20) + 40},
-                            {Date: '1/1/2026', Branch: branch, Channel: 'Delivery Cash', Tender_Type: 'Delivery', Sales: Math.floor(Math.random() * 800) + 100, Transactions: Math.floor(Math.random() * 15) + 5, AVR: Math.floor(Math.random() * 15) + 35},
-                            {Date: '1/1/2026', Branch: branch, Channel: 'ONLINE CASH', Tender_Type: 'Online', Sales: Math.floor(Math.random() * 500) + 100, Transactions: Math.floor(Math.random() * 10) + 2, AVR: Math.floor(Math.random() * 20) + 40},
-                            {Date: '1/1/2026', Branch: branch, Channel: 'ONLINE CARD', Tender_Type: 'Online', Sales: Math.floor(Math.random() * 400) + 50, Transactions: Math.floor(Math.random() * 5) + 1, AVR: Math.floor(Math.random() * 30) + 50}
-                        );
+                        for (let i = 0; i < 5; i++) {
+                            const date = new Date(startDate);
+                            date.setDate(date.getDate() + i);
+                            const dateStr = `${date.getMonth()+1}/${date.getDate()}/${date.getFullYear()}`;
+                            
+                            salesData.push(
+                                {Date: dateStr, Branch: branch, Channel: 'Keeta', Tender_Type: 'Aggregator', Sales: Math.floor(Math.random() * 15000) + 5000, Transactions: Math.floor(Math.random() * 300) + 100, AVR: Math.floor(Math.random() * 20) + 30},
+                                {Date: dateStr, Branch: branch, Channel: 'Delivery Card', Tender_Type: 'Delivery', Sales: Math.floor(Math.random() * 1000) + 200, Transactions: Math.floor(Math.random() * 20) + 5, AVR: Math.floor(Math.random() * 20) + 40},
+                                {Date: dateStr, Branch: branch, Channel: 'Delivery Cash', Tender_Type: 'Delivery', Sales: Math.floor(Math.random() * 800) + 100, Transactions: Math.floor(Math.random() * 15) + 5, AVR: Math.floor(Math.random() * 15) + 35},
+                                {Date: dateStr, Branch: branch, Channel: 'Online Cash', Tender_Type: 'Online', Sales: Math.floor(Math.random() * 500) + 100, Transactions: Math.floor(Math.random() * 10) + 2, AVR: Math.floor(Math.random() * 20) + 40},
+                                {Date: dateStr, Branch: branch, Channel: 'Online Card', Tender_Type: 'Online', Sales: Math.floor(Math.random() * 400) + 50, Transactions: Math.floor(Math.random() * 5) + 1, AVR: Math.floor(Math.random() * 30) + 50}
+                            );
+                        }
                     }
                 });
                 
@@ -1159,6 +1432,7 @@
             }
 
             updateAllViews() {
+                this.destroyAllCharts();
                 this.updateQuickStats();
                 this.updateBranchesOverview();
                 this.updateDashboard();
@@ -1167,12 +1441,25 @@
                 this.updateTargets();
             }
 
+            destroyAllCharts() {
+                Object.values(charts).forEach(chart => {
+                    if (chart && chart.destroy) {
+                        chart.destroy();
+                    }
+                });
+                charts = {};
+            }
+
             updateQuickStats() {
-                if (salesData.length === 0) return;
+                const filteredData = this.getFilteredData();
+                if (filteredData.length === 0) return;
                 
-                const totalSales = salesData.reduce((sum, item) => sum + item.Sales, 0);
-                const totalTransactions = salesData.reduce((sum, item) => sum + item.Transactions, 0);
+                const totalSales = filteredData.reduce((sum, item) => sum + item.Sales, 0);
+                const totalTransactions = filteredData.reduce((sum, item) => sum + item.Transactions, 0);
                 const avgTicket = totalTransactions > 0 ? totalSales / totalTransactions : 0;
+                
+                // Count unique branches in filtered data
+                const uniqueBranches = new Set(filteredData.map(item => item.Branch));
                 
                 const quickStatsHTML = `
                     <div class="stat-card">
@@ -1180,7 +1467,7 @@
                             <i class="fas fa-money-bill-wave"></i>
                         </div>
                         <div class="stat-info">
-                            <h3>${this.formatNumber(totalSales)}</h3>
+                            <h3>${this.formatNumber(totalSales, true)}</h3>
                             <p>Total Sales</p>
                         </div>
                     </div>
@@ -1200,8 +1487,8 @@
                             <i class="fas fa-store"></i>
                         </div>
                         <div class="stat-info">
-                            <h3>${branches.length}</h3>
-                            <p>Number of Branches</p>
+                            <h3>${uniqueBranches.size}</h3>
+                            <p>Active Branches</p>
                         </div>
                     </div>
                     
@@ -1210,7 +1497,7 @@
                             <i class="fas fa-chart-bar"></i>
                         </div>
                         <div class="stat-info">
-                            <h3>${this.formatNumber(avgTicket)}</h3>
+                            <h3>${this.formatNumber(avgTicket, true)}</h3>
                             <p>Average Ticket Value</p>
                         </div>
                     </div>
@@ -1220,12 +1507,15 @@
             }
 
             updateBranchesOverview() {
-                if (salesData.length === 0) return;
+                const filteredData = this.getFilteredData();
+                if (filteredData.length === 0) return;
                 
                 let tableHTML = '';
                 
                 branches.forEach(branch => {
-                    const branchData = salesData.filter(item => item.Branch === branch);
+                    const branchData = filteredData.filter(item => item.Branch === branch);
+                    if (branchData.length === 0) return;
+                    
                     const totalSales = branchData.reduce((sum, item) => sum + item.Sales, 0);
                     const totalTransactions = branchData.reduce((sum, item) => sum + item.Transactions, 0);
                     const avg = totalTransactions > 0 ? totalSales / totalTransactions : 0;
@@ -1233,21 +1523,21 @@
                     // Calculate delivery percentage
                     const deliveryData = branchData.filter(item => deliveryChannels.includes(item.Channel));
                     const deliverySales = deliveryData.reduce((sum, item) => sum + item.Sales, 0);
-                    const deliveryPercentage = totalSales > 0 ? (deliverySales / totalSales * 100).toFixed(1) : 0;
+                    const deliveryPercentage = totalSales > 0 ? (deliverySales / totalSales * 100) : 0;
                     
                     // Calculate online percentage
                     const onlineData = branchData.filter(item => onlineChannels.includes(item.Channel));
                     const onlineSales = onlineData.reduce((sum, item) => sum + item.Sales, 0);
-                    const onlinePercentage = totalSales > 0 ? (onlineSales / totalSales * 100).toFixed(1) : 0;
+                    const onlinePercentage = totalSales > 0 ? (onlineSales / totalSales * 100) : 0;
                     
                     tableHTML += `
                         <tr>
                             <td>${branch}</td>
-                            <td>${this.formatNumber(totalSales)}</td>
+                            <td>${this.formatNumber(totalSales, true)}</td>
                             <td>${this.formatNumber(totalTransactions)}</td>
-                            <td>${this.formatNumber(avg)}</td>
-                            <td>${deliveryPercentage}%</td>
-                            <td>${onlinePercentage}%</td>
+                            <td>${this.formatNumber(avg, true)}</td>
+                            <td>${deliveryPercentage.toFixed(1)}%</td>
+                            <td>${onlinePercentage.toFixed(1)}%</td>
                         </tr>
                     `;
                 });
@@ -1256,26 +1546,27 @@
             }
 
             updateDashboard() {
-                if (salesData.length === 0) return;
+                const filteredData = this.getFilteredData();
+                if (filteredData.length === 0) return;
                 
                 // General statistics
-                const totalSales = salesData.reduce((sum, item) => sum + item.Sales, 0);
-                const totalTransactions = salesData.reduce((sum, item) => sum + item.Transactions, 0);
+                const totalSales = filteredData.reduce((sum, item) => sum + item.Sales, 0);
+                const totalTransactions = filteredData.reduce((sum, item) => sum + item.Transactions, 0);
                 
                 // Delivery sales
-                const deliveryData = salesData.filter(item => deliveryChannels.includes(item.Channel));
+                const deliveryData = filteredData.filter(item => deliveryChannels.includes(item.Channel));
                 const deliverySales = deliveryData.reduce((sum, item) => sum + item.Sales, 0);
-                const deliveryPercentage = totalSales > 0 ? (deliverySales / totalSales * 100).toFixed(1) : 0;
+                const deliveryPercentage = totalSales > 0 ? (deliverySales / totalSales * 100) : 0;
                 
                 // Online sales
-                const onlineData = salesData.filter(item => onlineChannels.includes(item.Channel));
+                const onlineData = filteredData.filter(item => onlineChannels.includes(item.Channel));
                 const onlineSales = onlineData.reduce((sum, item) => sum + item.Sales, 0);
-                const onlinePercentage = totalSales > 0 ? (onlineSales / totalSales * 100).toFixed(1) : 0;
+                const onlinePercentage = totalSales > 0 ? (onlineSales / totalSales * 100) : 0;
                 
                 // Top branches
                 const branchSales = {};
                 branches.forEach(branch => {
-                    const branchData = salesData.filter(item => item.Branch === branch);
+                    const branchData = filteredData.filter(item => item.Branch === branch);
                     branchSales[branch] = branchData.reduce((sum, item) => sum + item.Sales, 0);
                 });
                 
@@ -1290,7 +1581,7 @@
                             <i class="fas fa-chart-line"></i>
                         </div>
                         <div class="kpi-body">
-                            <h2>${this.formatNumber(totalSales)}</h2>
+                            <h2>${this.formatNumber(totalSales, true)}</h2>
                             <p>From ${this.formatNumber(totalTransactions)} transactions</p>
                         </div>
                     </div>
@@ -1301,7 +1592,7 @@
                             <i class="fas fa-motorcycle"></i>
                         </div>
                         <div class="kpi-body">
-                            <h2>${deliveryPercentage}%</h2>
+                            <h2>${deliveryPercentage.toFixed(1)}%</h2>
                             <div class="progress-bar">
                                 <div class="progress-fill" style="width: ${deliveryPercentage}%"></div>
                             </div>
@@ -1314,7 +1605,7 @@
                             <i class="fas fa-globe"></i>
                         </div>
                         <div class="kpi-body">
-                            <h2>${onlinePercentage}%</h2>
+                            <h2>${onlinePercentage.toFixed(1)}%</h2>
                             <div class="progress-bar">
                                 <div class="progress-fill" style="width: ${onlinePercentage}%"></div>
                             </div>
@@ -1329,7 +1620,7 @@
                             ${sortedBranches.map(([branch, sales], index) => `
                                 <div class="branch-performance">
                                     <span class="branch-name">${index + 1}. ${branch}</span>
-                                    <span class="branch-value">${this.formatNumber(sales)}</span>
+                                    <span class="branch-value">${this.formatNumber(sales, true)}</span>
                                 </div>
                             `).join('')}
                         </div>
@@ -1340,25 +1631,26 @@
             }
 
             updateDeliveryAnalysis() {
-                if (salesData.length === 0) return;
+                const filteredData = this.getFilteredData();
+                if (filteredData.length === 0) return;
                 
                 // Delivery analysis
-                const deliveryData = salesData.filter(item => deliveryChannels.includes(item.Channel));
+                const deliveryData = filteredData.filter(item => deliveryChannels.includes(item.Channel));
                 const totalDeliverySales = deliveryData.reduce((sum, item) => sum + item.Sales, 0);
                 const totalDeliveryOrders = deliveryData.reduce((sum, item) => sum + item.Transactions, 0);
                 const avgDeliveryOrder = totalDeliveryOrders > 0 ? totalDeliverySales / totalDeliveryOrders : 0;
                 
                 // Cash vs Card comparison
                 const deliveryCash = deliveryData.filter(item => item.Channel === 'Delivery Cash');
-                const deliveryCard = deliveryData.filter(item => item.Channel === 'Delivery CARD');
+                const deliveryCard = deliveryData.filter(item => item.Channel === 'Delivery Card');
                 
                 const cashSales = deliveryCash.reduce((sum, item) => sum + item.Sales, 0);
                 const cardSales = deliveryCard.reduce((sum, item) => sum + item.Sales, 0);
                 
                 // Update indicators
-                document.getElementById('totalDeliverySales').textContent = this.formatNumber(totalDeliverySales);
+                document.getElementById('totalDeliverySales').textContent = this.formatNumber(totalDeliverySales, true);
                 document.getElementById('deliveryOrders').textContent = this.formatNumber(totalDeliveryOrders);
-                document.getElementById('avgDeliveryOrder').textContent = this.formatNumber(avgDeliveryOrder);
+                document.getElementById('avgDeliveryOrder').textContent = this.formatNumber(avgDeliveryOrder, true);
                 
                 // Update branches table
                 let branchesTableHTML = '';
@@ -1366,25 +1658,25 @@
                     const branchDeliveryData = deliveryData.filter(item => item.Branch === branch);
                     if (branchDeliveryData.length > 0) {
                         const branchDeliverySales = branchDeliveryData.reduce((sum, item) => sum + item.Sales, 0);
-                        const branchTotalSales = salesData.filter(item => item.Branch === branch)
+                        const branchTotalSales = filteredData.filter(item => item.Branch === branch)
                             .reduce((sum, item) => sum + item.Sales, 0);
-                        const deliveryPercentage = branchTotalSales > 0 ? (branchDeliverySales / branchTotalSales * 100).toFixed(1) : 0;
+                        const deliveryPercentage = branchTotalSales > 0 ? (branchDeliverySales / branchTotalSales * 100) : 0;
                         
                         const cashPercentage = branchDeliverySales > 0 ? 
                             (branchDeliveryData.filter(item => item.Channel === 'Delivery Cash')
-                                .reduce((sum, item) => sum + item.Sales, 0) / branchDeliverySales * 100).toFixed(1) : 0;
+                                .reduce((sum, item) => sum + item.Sales, 0) / branchDeliverySales * 100) : 0;
                         
                         const cardPercentage = branchDeliverySales > 0 ? 
-                            (branchDeliveryData.filter(item => item.Channel === 'Delivery CARD')
-                                .reduce((sum, item) => sum + item.Sales, 0) / branchDeliverySales * 100).toFixed(1) : 0;
+                            (branchDeliveryData.filter(item => item.Channel === 'Delivery Card')
+                                .reduce((sum, item) => sum + item.Sales, 0) / branchDeliverySales * 100) : 0;
                         
                         branchesTableHTML += `
                             <tr>
                                 <td>${branch}</td>
-                                <td>${this.formatNumber(branchDeliverySales)}</td>
-                                <td>${deliveryPercentage}%</td>
-                                <td>${cashPercentage}%</td>
-                                <td>${cardPercentage}%</td>
+                                <td>${this.formatNumber(branchDeliverySales, true)}</td>
+                                <td>${deliveryPercentage.toFixed(1)}%</td>
+                                <td>${cashPercentage.toFixed(1)}%</td>
+                                <td>${cardPercentage.toFixed(1)}%</td>
                             </tr>
                         `;
                     }
@@ -1422,9 +1714,20 @@
                     },
                     options: {
                         responsive: true,
+                        maintainAspectRatio: false,
                         plugins: {
                             legend: {
                                 position: 'bottom'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => {
+                                        const value = context.raw;
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                        return `${context.label}: ${this.formatNumber(value, true)} (${percentage}%)`;
+                                    }
+                                }
                             }
                         }
                     }
@@ -1432,33 +1735,25 @@
             }
 
             updateOnlineAnalysis() {
-                if (salesData.length === 0) return;
+                const filteredData = this.getFilteredData();
+                if (filteredData.length === 0) return;
                 
                 // Online analysis
-                const onlineData = salesData.filter(item => onlineChannels.includes(item.Channel));
+                const onlineData = filteredData.filter(item => onlineChannels.includes(item.Channel));
                 const totalOnlineSales = onlineData.reduce((sum, item) => sum + item.Sales, 0);
                 const totalOnlineOrders = onlineData.reduce((sum, item) => sum + item.Transactions, 0);
                 const avgOnlineOrder = totalOnlineOrders > 0 ? totalOnlineSales / totalOnlineOrders : 0;
                 
                 // Platform analysis
-                const platforms = {
-                    'ONLINE CASH': 0,
-                    'ONLINE CARD': 0,
-                    'Keeta CARD': 0,
-                    'NOON CARD': 0,
-                    'Careem CARD': 0,
-                    'SMILES CARD': 0,
-                    'DELIVEROO CARD': 0
-                };
-                
+                const platforms = {};
                 onlineData.forEach(item => {
                     platforms[item.Channel] = (platforms[item.Channel] || 0) + item.Sales;
                 });
                 
                 // Update indicators
-                document.getElementById('totalOnlineSales').textContent = this.formatNumber(totalOnlineSales);
+                document.getElementById('totalOnlineSales').textContent = this.formatNumber(totalOnlineSales, true);
                 document.getElementById('onlineOrders').textContent = this.formatNumber(totalOnlineOrders);
-                document.getElementById('avgOnlineOrder').textContent = this.formatNumber(avgOnlineOrder);
+                document.getElementById('avgOnlineOrder').textContent = this.formatNumber(avgOnlineOrder, true);
                 
                 // Update payment methods table
                 let paymentsTableHTML = '';
@@ -1467,15 +1762,15 @@
                         const channelData = onlineData.filter(item => item.Channel === channel);
                         const orders = channelData.reduce((sum, item) => sum + item.Transactions, 0);
                         const avg = orders > 0 ? sales / orders : 0;
-                        const percentage = totalOnlineSales > 0 ? (sales / totalOnlineSales * 100).toFixed(1) : 0;
+                        const percentage = totalOnlineSales > 0 ? (sales / totalOnlineSales * 100) : 0;
                         
                         paymentsTableHTML += `
                             <tr>
                                 <td>${channel}</td>
-                                <td>${this.formatNumber(sales)}</td>
+                                <td>${this.formatNumber(sales, true)}</td>
                                 <td>${this.formatNumber(orders)}</td>
-                                <td>${this.formatNumber(avg)}</td>
-                                <td>${percentage}%</td>
+                                <td>${this.formatNumber(avg, true)}</td>
+                                <td>${percentage.toFixed(1)}%</td>
                             </tr>
                         `;
                     }
@@ -1518,9 +1813,20 @@
                     },
                     options: {
                         responsive: true,
+                        maintainAspectRatio: false,
                         plugins: {
                             legend: {
                                 position: 'bottom'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => {
+                                        const value = context.raw;
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                        return `${context.label}: ${this.formatNumber(value, true)} (${percentage}%)`;
+                                    }
+                                }
                             }
                         }
                     }
@@ -1528,13 +1834,15 @@
             }
 
             updateTargets() {
-                // Generate random targets
-                if (targets.length === 0) {
+                const filteredData = this.getFilteredData();
+                
+                // Generate or update targets based on filtered data
+                if (targets.length === 0 || filteredData.length > 0) {
                     targets = branches.map(branch => {
-                        const branchData = salesData.filter(item => item.Branch === branch);
+                        const branchData = filteredData.filter(item => item.Branch === branch);
                         const currentSales = branchData.reduce((sum, item) => sum + item.Sales, 0);
                         const target = Math.round(currentSales * (1.2 + Math.random() * 0.3)); // 20-50% increase
-                        const progress = Math.min(100, Math.round((currentSales / target) * 100));
+                        const progress = Math.min(100, totalSales > 0 ? Math.round((currentSales / target) * 100) : 0);
                         
                         return {
                             branch,
@@ -1556,8 +1864,8 @@
                     targetsTableHTML += `
                         <tr>
                             <td>${target.branch}</td>
-                            <td>${this.formatNumber(target.target)}</td>
-                            <td>${this.formatNumber(target.current)}</td>
+                            <td>${this.formatNumber(target.target, true)}</td>
+                            <td>${this.formatNumber(target.current, true)}</td>
                             <td>
                                 ${target.progress}%
                                 <div class="progress-bar">
@@ -1581,19 +1889,221 @@
                 document.getElementById('exportModal').classList.remove('active');
             }
 
-            generateReport() {
+            exportData() {
+                const format = document.getElementById('exportFormat').value;
                 const reportType = document.getElementById('reportType').value;
-                const period = document.getElementById('reportPeriod').value;
+                const period = document.getElementById('exportPeriod').value;
                 
-                // Simulate report generation
-                alert(`Preparing report: ${reportType} for period: ${period}`);
+                let exportData = this.getFilteredData();
+                let fileName = `sales_report_${reportType}_${new Date().toISOString().split('T')[0]}`;
                 
-                // In real application, this would create and download the file
+                // Prepare data based on report type
+                let dataToExport = [];
+                
+                switch(reportType) {
+                    case 'summary':
+                        dataToExport = this.generateSummaryReport();
+                        fileName = `summary_report_${new Date().toISOString().split('T')[0]}`;
+                        break;
+                    case 'branches':
+                        dataToExport = this.generateBranchesReport();
+                        fileName = `branches_report_${new Date().toISOString().split('T')[0]}`;
+                        break;
+                    case 'delivery':
+                        dataToExport = this.generateDeliveryReport();
+                        fileName = `delivery_report_${new Date().toISOString().split('T')[0]}`;
+                        break;
+                    case 'online':
+                        dataToExport = this.generateOnlineReport();
+                        fileName = `online_report_${new Date().toISOString().split('T')[0]}`;
+                        break;
+                    case 'full':
+                        dataToExport = exportData;
+                        fileName = `full_report_${new Date().toISOString().split('T')[0]}`;
+                        break;
+                }
+                
+                if (format === 'csv') {
+                    this.exportToCSV(dataToExport, fileName);
+                } else if (format === 'xlsx') {
+                    this.exportToExcel(dataToExport, fileName);
+                } else if (format === 'json') {
+                    this.exportToJSON(dataToExport, fileName);
+                }
+                
                 this.hideExportModal();
+                this.showFeedback(`Report exported successfully as ${fileName}.${format}`, 'success');
             }
 
-            formatNumber(num) {
-                return new Intl.NumberFormat('en-US').format(Math.round(num));
+            generateSummaryReport() {
+                const filteredData = this.getFilteredData();
+                const totalSales = filteredData.reduce((sum, item) => sum + item.Sales, 0);
+                const totalTransactions = filteredData.reduce((sum, item) => sum + item.Transactions, 0);
+                
+                return [{
+                    'Report Type': 'Executive Summary',
+                    'Total Sales': this.formatNumber(totalSales, true),
+                    'Total Transactions': totalTransactions,
+                    'Average Ticket': this.formatNumber(totalTransactions > 0 ? totalSales / totalTransactions : 0, true),
+                    'Date Range': `${dateRange.start?.toLocaleDateString()} - ${dateRange.end?.toLocaleDateString()}`,
+                    'Generated On': new Date().toLocaleString()
+                }];
+            }
+
+            generateBranchesReport() {
+                const filteredData = this.getFilteredData();
+                const report = [];
+                
+                branches.forEach(branch => {
+                    const branchData = filteredData.filter(item => item.Branch === branch);
+                    if (branchData.length > 0) {
+                        const totalSales = branchData.reduce((sum, item) => sum + item.Sales, 0);
+                        const totalTransactions = branchData.reduce((sum, item) => sum + item.Transactions, 0);
+                        const avg = totalTransactions > 0 ? totalSales / totalTransactions : 0;
+                        
+                        report.push({
+                            'Branch': branch,
+                            'Total Sales': totalSales,
+                            'Transactions': totalTransactions,
+                            'Average Ticket': avg,
+                            'Sales Share (%)': filteredData.length > 0 ? (totalSales / filteredData.reduce((sum, item) => sum + item.Sales, 0) * 100).toFixed(2) : 0
+                        });
+                    }
+                });
+                
+                return report;
+            }
+
+            generateDeliveryReport() {
+                const filteredData = this.getFilteredData();
+                const deliveryData = filteredData.filter(item => deliveryChannels.includes(item.Channel));
+                const report = [];
+                
+                branches.forEach(branch => {
+                    const branchData = deliveryData.filter(item => item.Branch === branch);
+                    if (branchData.length > 0) {
+                        const totalSales = branchData.reduce((sum, item) => sum + item.Sales, 0);
+                        const cashSales = branchData.filter(item => item.Channel === 'Delivery Cash').reduce((sum, item) => sum + item.Sales, 0);
+                        const cardSales = branchData.filter(item => item.Channel === 'Delivery Card').reduce((sum, item) => sum + item.Sales, 0);
+                        
+                        report.push({
+                            'Branch': branch,
+                            'Delivery Sales': totalSales,
+                            'Cash Sales': cashSales,
+                            'Card Sales': cardSales,
+                            'Cash %': totalSales > 0 ? (cashSales / totalSales * 100).toFixed(2) : 0,
+                            'Card %': totalSales > 0 ? (cardSales / totalSales * 100).toFixed(2) : 0
+                        });
+                    }
+                });
+                
+                return report;
+            }
+
+            generateOnlineReport() {
+                const filteredData = this.getFilteredData();
+                const onlineData = filteredData.filter(item => onlineChannels.includes(item.Channel));
+                const report = [];
+                
+                const platforms = {};
+                onlineData.forEach(item => {
+                    platforms[item.Channel] = (platforms[item.Channel] || 0) + item.Sales;
+                });
+                
+                Object.entries(platforms).forEach(([platform, sales]) => {
+                    const platformData = onlineData.filter(item => item.Channel === platform);
+                    const transactions = platformData.reduce((sum, item) => sum + item.Transactions, 0);
+                    
+                    report.push({
+                        'Platform': platform,
+                        'Sales': sales,
+                        'Transactions': transactions,
+                        'Average': transactions > 0 ? sales / transactions : 0,
+                        'Market Share (%)': onlineData.length > 0 ? (sales / onlineData.reduce((sum, item) => sum + item.Sales, 0) * 100).toFixed(2) : 0
+                    });
+                });
+                
+                return report;
+            }
+
+            exportToCSV(data, filename) {
+                if (!data || data.length === 0) {
+                    this.showFeedback('No data to export', 'error');
+                    return;
+                }
+                
+                const headers = Object.keys(data[0]);
+                const csvContent = [
+                    headers.join(','),
+                    ...data.map(row => headers.map(header => {
+                        const cell = row[header];
+                        return typeof cell === 'string' && cell.includes(',') ? `"${cell}"` : cell;
+                    }).join(','))
+                ].join('\n');
+                
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                
+                link.setAttribute('href', url);
+                link.setAttribute('download', `${filename}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            exportToExcel(data, filename) {
+                if (!data || data.length === 0) {
+                    this.showFeedback('No data to export', 'error');
+                    return;
+                }
+                
+                try {
+                    const ws = XLSX.utils.json_to_sheet(data);
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, 'Report');
+                    XLSX.writeFile(wb, `${filename}.xlsx`);
+                } catch (error) {
+                    console.error('Excel export error:', error);
+                    this.showFeedback('Error exporting to Excel', 'error');
+                }
+            }
+
+            exportToJSON(data, filename) {
+                const jsonContent = JSON.stringify(data, null, 2);
+                const blob = new Blob([jsonContent], { type: 'application/json' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                
+                link.setAttribute('href', url);
+                link.setAttribute('download', `${filename}.json`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            formatNumber(num, showDecimals = false) {
+                if (num === null || num === undefined) return '0';
+                
+                const options = {
+                    minimumFractionDigits: showDecimals ? 2 : 0,
+                    maximumFractionDigits: showDecimals ? 2 : 0
+                };
+                
+                return new Intl.NumberFormat('en-US', options).format(num);
+            }
+
+            showFeedback(message, type = 'success') {
+                const feedback = document.getElementById('uploadFeedback');
+                feedback.textContent = message;
+                feedback.className = 'upload-feedback ' + type;
+                
+                setTimeout(() => {
+                    feedback.className = 'upload-feedback';
+                    feedback.textContent = '';
+                }, 5000);
             }
         }
 
